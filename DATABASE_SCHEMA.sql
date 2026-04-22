@@ -72,12 +72,18 @@ CREATE TABLE found_items (
   -- Timestamp when item was recorded
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
-  -- User who reported the item (optional, could be "anonymous")
-  created_by TEXT
+  -- Timestamp when item was last updated
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
+  -- User who reported the item (optional)
+  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL
 );
 
--- Index for fast sorting and filtering
+-- Indexes for performance
 CREATE INDEX idx_found_items_created_at ON found_items(created_at DESC);
+CREATE INDEX idx_found_items_item_type ON found_items(item_type);
+CREATE INDEX idx_found_items_brand_color ON found_items(brand_color);
+CREATE INDEX idx_found_items_location_found ON found_items(location_found);
 
 -- ============================================================================
 -- STEP 3: CREATE LOST_ITEMS TABLE
@@ -112,13 +118,20 @@ CREATE TABLE lost_items (
   -- When item was reported as lost
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
+  -- Timestamp when item was last updated
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
   -- User ID of person reporting (required)
-  created_by TEXT NOT NULL
+  created_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
 -- Indexes for performance
 CREATE INDEX idx_lost_items_created_at ON lost_items(created_at DESC);
 CREATE INDEX idx_lost_items_status ON lost_items(status);
+CREATE INDEX idx_lost_items_item_type ON lost_items(item_type);
+CREATE INDEX idx_lost_items_color ON lost_items(color);
+CREATE INDEX idx_lost_items_brand ON lost_items(brand);
+CREATE INDEX idx_lost_items_location_lost ON lost_items(location_lost);
 
 -- ============================================================================
 -- STEP 4: CREATE FOUND_COMMENTS TABLE
@@ -141,11 +154,13 @@ CREATE TABLE found_comments (
   found_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
   -- User who reported finding the item
-  created_by TEXT NOT NULL
+  created_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
--- Index for quick lookups by lost_item_id
+-- Indexes for performance
 CREATE INDEX idx_found_comments_lost_item_id ON found_comments(lost_item_id);
+CREATE INDEX idx_found_comments_who_has_it ON found_comments(who_has_it);
+CREATE INDEX idx_found_comments_current_location ON found_comments(current_location);
 
 -- ============================================================================
 -- STEP 5: CREATE NOTIFICATION_TYPE ENUM
@@ -174,10 +189,10 @@ CREATE TABLE notifications (
   notification_type notification_type NOT NULL,
 
   -- Who reported finding the item (user who clicked "Is Found?" or posted found item)
-  sent_by TEXT NOT NULL,
+  sent_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
 
   -- The original lost item owner who receives this notification
-  sent_to TEXT NOT NULL,
+  sent_to UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
 
   -- Match details: which fields matched
   matched_fields TEXT[], -- e.g., ARRAY['item_type', 'color', 'location']
@@ -191,6 +206,9 @@ CREATE TABLE notifications (
   -- When the notification was created
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
+  -- Timestamp when notification was last updated
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
   -- When the notification was read
   read_at TIMESTAMP WITH TIME ZONE
 );
@@ -201,6 +219,7 @@ CREATE INDEX idx_notifications_found_item_id ON notifications(found_item_id);
 CREATE INDEX idx_notifications_sent_to ON notifications(sent_to);
 CREATE INDEX idx_notifications_is_read ON notifications(is_read);
 CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
+CREATE INDEX idx_notifications_notification_type ON notifications(notification_type);
 
 -- ============================================================================
 -- OPTIONAL: ENABLE ROW LEVEL SECURITY (for production)
@@ -210,6 +229,7 @@ CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
 -- ALTER TABLE found_items ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE lost_items ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE found_comments ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
 -- CREATE POLICY "Anyone can view found items" ON found_items
 --   FOR SELECT USING (true);
@@ -227,6 +247,12 @@ CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
 --   FOR SELECT USING (true);
 
 -- CREATE POLICY "Anyone can create found comments" ON found_comments
+--   FOR INSERT WITH CHECK (true);
+
+-- CREATE POLICY "Users can view their own notifications" ON notifications
+--   FOR SELECT USING (auth.uid() = sent_to);
+
+-- CREATE POLICY "System can create notifications" ON notifications
 --   FOR INSERT WITH CHECK (true);
 
 -- ============================================================================
@@ -257,16 +283,17 @@ CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
 
 -- INSERT INTO found_items (photo_url, item_type, brand_color, location_found, handed_over_to, created_by)
 -- VALUES 
---   (NULL, 'Wallet', 'Black leather wallet with gold accents', 'Library 3rd floor near entrance', 'Security Desk', 'anonymous'),
---   (NULL, 'Keys', 'Silver keys on blue keychain', 'Cafeteria near serving counter', 'Director''s Office', 'anonymous'),
---   (NULL, 'Eyeglasses', 'Black frame glasses, Ray-Ban style', 'Sports field north side', 'Hostel Warden', 'anonymous');
+--   (NULL, 'Wallet', 'Black leather wallet with gold accents', 'Library 3rd floor near entrance', 'Security Desk', NULL),
+--   (NULL, 'Keys', 'Silver keys on blue keychain', 'Cafeteria near serving counter', 'Director''s Office', NULL),
+--   (NULL, 'Eyeglasses', 'Black frame glasses, Ray-Ban style', 'Sports field north side', 'Hostel Warden', NULL);
 
 -- INSERT INTO lost_items (item_type, color, brand, location_lost, description, created_by)
 -- VALUES
---   ('Wallet', 'Black', 'Leather', 'Library 3rd floor', 'Black leather wallet with student ID and driver license inside. Has family photos.', 'anonymous'),
---   ('Electronics', 'White', 'Apple AirPods Pro', 'Classroom Building B201', 'White Apple AirPods Pro in white charging case. Left during morning lecture.', 'anonymous'),
---   ('Keys', 'Silver', NULL, 'Cafeteria', 'Silver keys on blue keychain with "Home" tag. About 5 keys total.', 'anonymous');
+--   ('Wallet', 'Black', 'Leather', 'Library 3rd floor', 'Black leather wallet with student ID and driver license inside. Has family photos.', '00000000-0000-0000-0000-000000000000'),
+--   ('Electronics', 'White', 'Apple AirPods Pro', 'Classroom Building B201', 'White Apple AirPods Pro in white charging case. Left during morning lecture.', '00000000-0000-0000-0000-000000000000'),
+--   ('Keys', 'Silver', NULL, 'Cafeteria', 'Silver keys on blue keychain with "Home" tag. About 5 keys total.', '00000000-0000-0000-0000-000000000000');
 
 -- ============================================================================
 -- END OF SCHEMA
 -- ============================================================================
+
