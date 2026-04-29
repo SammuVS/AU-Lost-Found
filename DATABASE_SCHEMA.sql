@@ -26,6 +26,8 @@ CREATE TYPE item_type AS ENUM (
   'Electronics',
   'Other'
 );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 CREATE TYPE handed_over_to_enum AS ENUM (
   'Director''s Office',
@@ -33,6 +35,8 @@ CREATE TYPE handed_over_to_enum AS ENUM (
   'Department Office',
   'Hostel Warden'
 );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 CREATE TYPE who_has_it_enum AS ENUM (
   'Student',
@@ -40,11 +44,15 @@ CREATE TYPE who_has_it_enum AS ENUM (
   'Cleaner',
   'Security'
 );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 CREATE TYPE item_status AS ENUM (
   'Missing',
   'Found'
 );
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================================
 -- STEP 2: CREATE FOUND_ITEMS TABLE
@@ -132,7 +140,6 @@ CREATE INDEX idx_lost_items_item_type ON lost_items(item_type);
 CREATE INDEX idx_lost_items_color ON lost_items(color);
 CREATE INDEX idx_lost_items_brand ON lost_items(brand);
 CREATE INDEX idx_lost_items_location_lost ON lost_items(location_lost);
-
 -- ============================================================================
 -- STEP 4: CREATE FOUND_COMMENTS TABLE
 -- ============================================================================
@@ -226,35 +233,125 @@ CREATE INDEX idx_notifications_notification_type ON notifications(notification_t
 -- ============================================================================
 -- Uncomment these lines when you implement user authentication
 
--- ALTER TABLE found_items ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE lost_items ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE found_comments ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+-- ENABLE RLS
+ALTER TABLE found_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lost_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE found_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
--- CREATE POLICY "Anyone can view found items" ON found_items
---   FOR SELECT USING (true);
+-- =========================
+-- FOUND ITEMS
+-- =========================
 
--- CREATE POLICY "Anyone can create found items" ON found_items
---   FOR INSERT WITH CHECK (true);
+-- Anyone can view
+CREATE POLICY "Public read found_items"
+ON found_items FOR SELECT
+TO authenticated, anon
+USING (true);
 
--- CREATE POLICY "Anyone can view lost items" ON lost_items
---   FOR SELECT USING (true);
+-- Only logged-in users can insert
+CREATE POLICY "Authenticated insert found_items"
+ON found_items FOR INSERT
+TO authenticated
+WITH CHECK ((select auth.uid()) IS NOT NULL);
 
--- CREATE POLICY "Anyone can create lost items" ON lost_items
---   FOR INSERT WITH CHECK (true);
+-- Only owner can update/delete
+CREATE POLICY "Owner modify found_items"
+ON found_items FOR UPDATE
+TO authenticated
+USING ((select auth.uid()) = created_by);
 
--- CREATE POLICY "Anyone can view found comments" ON found_comments
---   FOR SELECT USING (true);
+CREATE POLICY "Owner delete found_items"
+ON found_items FOR DELETE
+TO authenticated
+USING ((select auth.uid()) = created_by);
 
--- CREATE POLICY "Anyone can create found comments" ON found_comments
---   FOR INSERT WITH CHECK (true);
 
--- CREATE POLICY "Users can view their own notifications" ON notifications
---   FOR SELECT USING (auth.uid() = sent_to);
+-- =========================
+-- LOST ITEMS
+-- =========================
 
--- CREATE POLICY "System can create notifications" ON notifications
---   FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public read lost_items"
+ON lost_items FOR SELECT
+TO authenticated, anon
+USING (true);
 
+CREATE POLICY "Authenticated insert lost_items"
+ON lost_items FOR INSERT
+TO authenticated
+WITH CHECK ((select auth.uid()) = created_by);
+
+CREATE POLICY "Owner modify lost_items"
+ON lost_items FOR UPDATE
+TO authenticated
+USING ((select auth.uid()) = created_by);
+
+CREATE POLICY "Owner delete lost_items"
+ON lost_items FOR DELETE
+TO authenticated
+USING ((select auth.uid()) = created_by);
+
+
+-- =========================
+-- FOUND COMMENTS
+-- =========================
+
+CREATE POLICY "Public read found_comments"
+ON found_comments FOR SELECT
+TO authenticated, anon
+USING (true);
+
+CREATE POLICY "Authenticated insert found_comments"
+ON found_comments FOR INSERT
+TO authenticated
+WITH CHECK ((select auth.uid()) = created_by);
+
+
+-- =========================
+-- NOTIFICATIONS
+-- =========================
+
+CREATE POLICY "User read notifications"
+ON notifications FOR SELECT
+TO authenticated
+USING ((select auth.uid()) = sent_to);
+
+CREATE POLICY "System insert notifications"
+ON notifications FOR INSERT
+TO authenticated
+WITH CHECK (true);
+
+-- =========================
+-- RLS CRITICAL INDEXES
+-- =========================
+
+CREATE INDEX idx_found_items_created_by ON found_items(created_by);
+CREATE INDEX idx_lost_items_created_by ON lost_items(created_by);
+CREATE INDEX idx_found_comments_created_by ON found_comments(created_by);
+CREATE INDEX idx_notifications_sent_to_user ON notifications(sent_to);
+
+-- =========================
+-- JOIN / MATCH OPTIMIZATION
+-- =========================
+
+CREATE INDEX idx_notifications_composite 
+ON notifications(sent_to, is_read, created_at DESC);
+
+CREATE INDEX idx_lost_items_user_status 
+ON lost_items(created_by, status);
+
+-- =========================
+-- SEARCH OPTIMIZATION (optional but powerful)
+-- =========================
+
+CREATE INDEX idx_found_items_search 
+ON found_items(item_type, location_found);
+
+CREATE INDEX idx_lost_items_search 
+ON lost_items(item_type, location_lost);
+
+-- Helps Postgres planner optimize better
+ANALYZE;
 -- ============================================================================
 -- NEXT STEPS AFTER RUNNING THIS SQL:
 -- ============================================================================
