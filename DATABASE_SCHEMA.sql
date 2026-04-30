@@ -12,11 +12,21 @@
  *
  * Time to complete: ~10 seconds
  */
+DROP TABLE IF EXISTS notifications CASCADE;
+DROP TABLE IF EXISTS found_comments CASCADE;
+DROP TABLE IF EXISTS lost_items CASCADE;
+DROP TABLE IF EXISTS found_items CASCADE;
 
+DROP TYPE IF EXISTS notification_type CASCADE;
+DROP TYPE IF EXISTS item_status CASCADE;
+DROP TYPE IF EXISTS who_has_it_enum CASCADE;
+DROP TYPE IF EXISTS handed_over_to_enum CASCADE;
+DROP TYPE IF EXISTS item_type CASCADE;
 -- ============================================================================
 -- STEP 1: CREATE ENUM TYPES
 -- ============================================================================
-
+DO $$
+BEGIN
 CREATE TYPE item_type AS ENUM (
   'Wallet',
   'Eyeglasses',
@@ -29,6 +39,8 @@ CREATE TYPE item_type AS ENUM (
 EXCEPTION WHEN duplicate_object THEN null;
 END $$;
 
+DO $$
+BEGIN
 CREATE TYPE handed_over_to_enum AS ENUM (
   'Director''s Office',
   'Security Desk',
@@ -38,6 +50,8 @@ CREATE TYPE handed_over_to_enum AS ENUM (
 EXCEPTION WHEN duplicate_object THEN null;
 END $$;
 
+DO $$
+BEGIN
 CREATE TYPE who_has_it_enum AS ENUM (
   'Student',
   'Professor/Faculty',
@@ -47,6 +61,8 @@ CREATE TYPE who_has_it_enum AS ENUM (
 EXCEPTION WHEN duplicate_object THEN null;
 END $$;
 
+DO $$
+BEGIN
 CREATE TYPE item_status AS ENUM (
   'Missing',
   'Found'
@@ -172,12 +188,15 @@ CREATE INDEX idx_found_comments_current_location ON found_comments(current_locat
 -- ============================================================================
 -- STEP 5: CREATE NOTIFICATION_TYPE ENUM
 -- ============================================================================
-
+DO $$
+BEGIN
 CREATE TYPE notification_type AS ENUM (
   'DirectMatch',
   'AlgorithmicMatch'
 );
-
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 -- ============================================================================
 -- STEP 6: CREATE NOTIFICATIONS TABLE
 -- ============================================================================
